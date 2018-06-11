@@ -1,11 +1,11 @@
+// package com.github
+
+// @Grab('net.java.dev.jets3t:jets3t:0.9.0')
 import org.jets3t.service.impl.rest.httpclient.RestS3Service
 import org.jets3t.service.model.S3Bucket
 import org.jets3t.service.model.S3Object
 import org.jets3t.service.security.AWSCredentials
-// @Grab('net.java.dev.jets3t:jets3t:0.9.0')
-import au.com.bytecode.opencsv.*
-// @Grab('com.xlson.groovycsv:groovycsv:1.1')
-import static com.xlson.groovycsv.CsvParser.parseCsv
+import com.github.ExcelBuilder
 
 def accessKey
 def secretKey
@@ -18,17 +18,38 @@ main()
 
 def main() {
 	setup()
-	def filesForUpload = makeFilesForUploadList()
-	filesForUpload.eachWithIndex { file, i ->
-		uploadFile(settings.input.pathPrefixForTo + file.'to (S3 path)', settings.input.pathPrefixForFrom + file.'from (local path)')
-		log("${i+1} $file")
+	def count = 2
+	checkValidation()
+	new ExcelBuilder(pathToInputXLS).eachLine([labels:true]) {
+		def to = settings.input.pathPrefixForTo + toS3Path
+		def from = settings.input.pathPrefixForFrom + fromLocalPath
+		log "Upload $count; From: $from; To: $to"
+		try {
+			count++
+			uploadFile(to, from)
+		} catch (Exception e) {
+			log("Error: ${e}")
+		}
 	}
 	log('done')
 }
 
-def makeFilesForUploadList() {
-	String csvContents = new File(pathToInputCSV).text
-	parseCsv(csvContents, autoDetect:true)
+def checkValidation() {
+	log "Symbols validation started"
+	new ExcelBuilder(pathToInputXLS).eachLine([labels:true]) {
+		def to = settings.input.pathPrefixForTo + toS3Path
+		def from = settings.input.pathPrefixForFrom + fromLocalPath
+		log "Check From: $from; To: $to"
+		settings.input.notValidSymbols.eachWithIndex { symbol, i ->
+			if (to.contains(symbol)) {
+				throw new Exception("to (S3 path) Have forbiden symbol '$symbol'")
+			}
+			if (from.contains(symbol)) {
+				throw new Exception("from (local path) Have forbiden symbol '$symbol'")
+			}
+		}
+  }
+	log "Symbols validation done"
 }
 
 def uploadFile(def path, file) {
@@ -57,7 +78,7 @@ def log(def message) {
 
 def setup() {
 	settings = Config.fromYaml(new File('s3.yml').text)
-	pathToInputCSV = settings.input.csv
+	pathToInputXLS = settings.input.xls
 	bucketName = settings.s3.bucketName
 	credentials = new AWSCredentials(settings.s3.accessKey, settings.s3.secretKey)
 	s3Service = new RestS3Service(credentials)
